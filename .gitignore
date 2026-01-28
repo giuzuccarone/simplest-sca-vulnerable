@@ -1,0 +1,26 @@
+# Dependencies
+node-app/node_modules/
+python-app/__pycache__/
+python-app/*.pyc
+java-app/target/
+java-app/.classpath
+java-app/.project
+java-app/.settings/
+go-app/go.sum
+
+# Build artifacts
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
