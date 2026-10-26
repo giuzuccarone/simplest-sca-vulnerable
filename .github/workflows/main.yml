@@ -66,20 +66,28 @@ jobs:
 
       - name: Download Checkmarx One CLI
         shell: bash
+        env:
+          CX_CLI_VERSION: "2.3.67"
         run: |
           set -euo pipefail
 
-          mkdir -p "${RUNNER_TEMP}/cx-cli"
+          CLI_DIR="${RUNNER_TEMP}/cx-cli"
+          ARCHIVE="ast-cli_${CX_CLI_VERSION}_linux_x64.tar.gz"
+          DOWNLOAD_URL="https://github.com/Checkmarx/ast-cli/releases/download/${CX_CLI_VERSION}/${ARCHIVE}"
+
+          mkdir -p "${CLI_DIR}"
 
           curl --fail --location --retry 3 \
-            "https://github.com/Checkmarx/ast-cli/releases/latest/download/ast-cli-linux64.tar.gz" \
-            --output "${RUNNER_TEMP}/ast-cli-linux64.tar.gz"
+            "${DOWNLOAD_URL}" \
+            --output "${RUNNER_TEMP}/${ARCHIVE}"
 
-          tar -xzf "${RUNNER_TEMP}/ast-cli-linux64.tar.gz" \
-            -C "${RUNNER_TEMP}/cx-cli"
+          tar -xzf "${RUNNER_TEMP}/${ARCHIVE}" \
+            -C "${CLI_DIR}"
 
-          chmod +x "${RUNNER_TEMP}/cx-cli/cx"
+          chmod +x "${CLI_DIR}/cx"
 
+          "${CLI_DIR}/cx" version
+          
       - name: Download Checkmarx SCA Resolver
         shell: bash
         run: |
