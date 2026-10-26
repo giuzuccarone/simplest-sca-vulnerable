@@ -131,7 +131,6 @@ jobs:
 
           "${RUNNER_TEMP}/cx-cli/cx" scan create \
             --project-name "simplest-sca-vulnerable-nodejs" \
-            --scan-types sca \
             -s "${GITHUB_WORKSPACE}/node-app" \
             --branch "${SCAN_BRANCH}" \
             --sca-resolver "${RUNNER_TEMP}/sca-resolver/ScaResolver"
