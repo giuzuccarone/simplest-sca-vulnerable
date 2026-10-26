@@ -30,6 +30,7 @@ jobs:
           sudo apt-get install -y ca-certificates libgssapi-krb5-2
 
       - name: Install project dependencies
+        working-directory: ./nodejs
         run: |
           if [ -f package-lock.json ]; then
             npm ci
@@ -60,6 +61,16 @@ jobs:
           rm -f ScaResolver-linux64.tar.gz
           chmod +x ./ScaResolver
 
+      - name: Validate Checkmarx authentication
+        env:
+          CX_BASE_URI: ${{ secrets.CX_BASE_URI }}
+          CX_BASE_AUTH_URI: ${{ secrets.CX_BASE_AUTH_URI }}
+          CX_TENANT: ${{ secrets.CX_TENANT }}
+          CX_CLIENT_ID: ${{ secrets.CX_CLIENT_ID }}
+          CX_CLIENT_SECRET: ${{ secrets.CX_CLIENT_SECRET }}
+        run: |
+          ./cx-cli/cx auth validate
+
       - name: Run Checkmarx One SCA Scan
         env:
           CX_BASE_URI: ${{ secrets.CX_BASE_URI }}
@@ -69,8 +80,8 @@ jobs:
           CX_CLIENT_SECRET: ${{ secrets.CX_CLIENT_SECRET }}
         run: |
           ./cx-cli/cx scan create \
-            --project-name "${{ github.event.repository.name }}" \
+            --project-name "simplest-sca-vulnerable-nodejs" \
             --scan-types sca \
-            -s . \
+            -s ./nodejs \
             --branch "${{ github.ref_name }}" \
             --sca-resolver ./sca-resolver/ScaResolver
