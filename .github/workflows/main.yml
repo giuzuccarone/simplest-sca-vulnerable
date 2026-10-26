@@ -5,15 +5,21 @@ on:
     branches:
       - main
       - master
+
   pull_request:
     branches:
       - main
       - master
+
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   checkmarx-sca:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -22,66 +28,102 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: "22"
+
+      - name: Validate project directory
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ ! -f ./node-app/package.json ]; then
+            echo "::error::Arquivo node-app/package.json não encontrado."
+            echo "Arquivos encontrados no repositório:"
+            find . -maxdepth 3 -name package.json
+            exit 1
+          fi
 
       - name: Install system dependencies
+        shell: bash
         run: |
+          set -euo pipefail
+
           sudo apt-get update
-          sudo apt-get install -y ca-certificates libgssapi-krb5-2
+          sudo apt-get install -y \
+            ca-certificates \
+            libgssapi-krb5-2
 
       - name: Install project dependencies
-        working-directory: ./nodejs
+        working-directory: ./node-app
+        shell: bash
         run: |
+          set -euo pipefail
+
           if [ -f package-lock.json ]; then
-            npm ci
+            npm ci --ignore-scripts --no-audit --no-fund
           else
-            npm install
+            npm install --ignore-scripts --no-audit --no-fund
           fi
 
       - name: Download Checkmarx One CLI
+        shell: bash
         run: |
-          curl -L \
-            "https://github.com/Checkmarx/ast-cli/releases/latest/download/ast-cli-linux64.tar.gz" \
-            -o ast-cli-linux64.tar.gz
+          set -euo pipefail
 
-          mkdir -p ./cx-cli
-          tar -xzvf ast-cli-linux64.tar.gz -C ./cx-cli
-          chmod +x ./cx-cli/cx
+          mkdir -p "${RUNNER_TEMP}/cx-cli"
+
+          curl --fail --location --retry 3 \
+            "https://github.com/Checkmarx/ast-cli/releases/latest/download/ast-cli-linux64.tar.gz" \
+            --output "${RUNNER_TEMP}/ast-cli-linux64.tar.gz"
+
+          tar -xzf "${RUNNER_TEMP}/ast-cli-linux64.tar.gz" \
+            -C "${RUNNER_TEMP}/cx-cli"
+
+          chmod +x "${RUNNER_TEMP}/cx-cli/cx"
 
       - name: Download Checkmarx SCA Resolver
+        shell: bash
         run: |
-          mkdir -p ./sca-resolver
-          cd ./sca-resolver
+          set -euo pipefail
 
-          curl -L \
+          mkdir -p "${RUNNER_TEMP}/sca-resolver"
+
+          curl --fail --location --retry 3 \
             "https://sca-downloads.s3.amazonaws.com/cli/latest/ScaResolver-linux64.tar.gz" \
-            -o ScaResolver-linux64.tar.gz
+            --output "${RUNNER_TEMP}/ScaResolver-linux64.tar.gz"
 
-          tar -xzvf ScaResolver-linux64.tar.gz
-          rm -f ScaResolver-linux64.tar.gz
-          chmod +x ./ScaResolver
+          tar -xzf "${RUNNER_TEMP}/ScaResolver-linux64.tar.gz" \
+            -C "${RUNNER_TEMP}/sca-resolver"
 
-      - name: Validate Checkmarx authentication
-        env:
-          CX_BASE_URI: ${{ secrets.CX_BASE_URI }}
-          CX_BASE_AUTH_URI: ${{ secrets.CX_BASE_AUTH_URI }}
-          CX_TENANT: ${{ secrets.CX_TENANT }}
-          CX_CLIENT_ID: ${{ secrets.CX_CLIENT_ID }}
-          CX_CLIENT_SECRET: ${{ secrets.CX_CLIENT_SECRET }}
-        run: |
-          ./cx-cli/cx auth validate
+          chmod +x "${RUNNER_TEMP}/sca-resolver/ScaResolver"
 
       - name: Run Checkmarx One SCA Scan
+        shell: bash
         env:
           CX_BASE_URI: ${{ secrets.CX_BASE_URI }}
           CX_BASE_AUTH_URI: ${{ secrets.CX_BASE_AUTH_URI }}
           CX_TENANT: ${{ secrets.CX_TENANT }}
           CX_CLIENT_ID: ${{ secrets.CX_CLIENT_ID }}
           CX_CLIENT_SECRET: ${{ secrets.CX_CLIENT_SECRET }}
+          SCAN_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
-          ./cx-cli/cx scan create \
+          set -euo pipefail
+
+          for variable in \
+            CX_BASE_URI \
+            CX_BASE_AUTH_URI \
+            CX_TENANT \
+            CX_CLIENT_ID \
+            CX_CLIENT_SECRET; do
+
+            if [ -z "${!variable:-}" ]; then
+              echo "::error::Secret obrigatório não configurado: ${variable}"
+              exit 1
+            fi
+          done
+
+          "${RUNNER_TEMP}/cx-cli/cx" scan create \
             --project-name "simplest-sca-vulnerable-nodejs" \
             --scan-types sca \
-            -s ./nodejs \
-            --branch "${{ github.ref_name }}" \
-            --sca-resolver ./sca-resolver/ScaResolver
+            --source "${GITHUB_WORKSPACE}/node-app" \
+            --branch "${SCAN_BRANCH}" \
+            --sca-resolver "${RUNNER_TEMP}/sca-resolver/ScaResolver"
