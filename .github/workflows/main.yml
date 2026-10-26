@@ -1,0 +1,76 @@
+name: Checkmarx SCA Scan
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  checkmarx-sca:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates libgssapi-krb5-2
+
+      - name: Install project dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Download Checkmarx One CLI
+        run: |
+          curl -L \
+            "https://github.com/Checkmarx/ast-cli/releases/latest/download/ast-cli-linux64.tar.gz" \
+            -o ast-cli-linux64.tar.gz
+
+          mkdir -p ./cx-cli
+          tar -xzvf ast-cli-linux64.tar.gz -C ./cx-cli
+          chmod +x ./cx-cli/cx
+
+      - name: Download Checkmarx SCA Resolver
+        run: |
+          mkdir -p ./sca-resolver
+          cd ./sca-resolver
+
+          curl -L \
+            "https://sca-downloads.s3.amazonaws.com/cli/latest/ScaResolver-linux64.tar.gz" \
+            -o ScaResolver-linux64.tar.gz
+
+          tar -xzvf ScaResolver-linux64.tar.gz
+          rm -f ScaResolver-linux64.tar.gz
+          chmod +x ./ScaResolver
+
+      - name: Run Checkmarx One SCA Scan
+        env:
+          CX_BASE_URI: ${{ secrets.CX_BASE_URI }}
+          CX_BASE_AUTH_URI: ${{ secrets.CX_BASE_AUTH_URI }}
+          CX_TENANT: ${{ secrets.CX_TENANT }}
+          CX_CLIENT_ID: ${{ secrets.CX_CLIENT_ID }}
+          CX_CLIENT_SECRET: ${{ secrets.CX_CLIENT_SECRET }}
+        run: |
+          ./cx-cli/cx scan create \
+            --project-name "${{ github.event.repository.name }}" \
+            --scan-types sca \
+            -s . \
+            --branch "${{ github.ref_name }}" \
+            --sca-resolver ./sca-resolver/ScaResolver
